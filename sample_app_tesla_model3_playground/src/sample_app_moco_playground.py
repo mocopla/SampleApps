@@ -48,14 +48,14 @@ import matplotlib.gridspec as gridspec
 if len(sys.argv) >= 2:
     TCP_HOST= sys.argv[1]
 else:    
-    # TCP_HOST = 'demo-amp.mocopla.link'
-    TCP_HOST = '0.0.0.0'
+    TCP_HOST = 'demo-amp.mocopla.link'
+    # TCP_HOST = '0.0.0.0'
 if len(sys.argv) >= 3:
     tcp_port_str = sys.argv[2]
     TCP_PORT = int(tcp_port_str)
 else:
-    # TCP_PORT = 55003
-    TCP_PORT = 3001
+    TCP_PORT = 55002
+    # TCP_PORT = 3001
     
 
 
@@ -74,6 +74,7 @@ logger = logging.getLogger(__name__)
 
 # To allert the application data is available a threading event is used
 tcp_signal_update = threading.Event()
+moco_engine_stopped = threading.Event()
 
 # List of signals to request from SSDK to be used in the application
 subscription_list = {"CMD": "vss","D":"Vehicle.Private.PowerState,Vehicle.Powertrain.TractionBattery.StateOfCharge.Displayed,Vehicle.Powertrain.Range,Vehicle.Private.UnixTime.Seconds,Vehicle.Speed,Vehicle.Powertrain.Transmission.TravelledDistance,Vehicle.Cabin.HVAC.IsAirConditioningActive"}
@@ -232,8 +233,9 @@ def get_signals(tcp_host, tcp_port, signal_list):
                     if reconnect_counter >= 5:
                         print("Re-connection to Moco engine failed")
                         ssdk_connected = False
+                        moco_engine_stopped.set()
                         tcp_signal_update.set()
-                        os._exit(1)
+                        break
         else:
             if received=='':
                 # When Moco engine disconnects, socket returns empty data when
@@ -256,9 +258,12 @@ def get_signals(tcp_host, tcp_port, signal_list):
                         reconnecting = False
                 if reconnect_counter == 5:
                     print("Re-connection to Moco engine failed")
+                    # after engine stops and doesn't restart the app exits here
                     ssdk_connected = False
+                    moco_engine_stopped.set()
                     tcp_signal_update.set()
-                    os._exit(1)
+                    break
+                    # os._exit(1)
 
             # Message received by TCP client. Signals inside message
             # are seperated by '\n' character. Message will be split
@@ -378,7 +383,7 @@ def app_calculations():
             time_since_last_update = time.time() - time_out_start
             # Addition for log files with only one drive cycle. When log file completes
             # after 45 seconds of not receiving data the driving cycle will finish
-            if (time_since_last_update > 45) & (last_power_state == "VEHICLE_POWER_STATE_DRIVE"):
+            if ((time_since_last_update > 45) & (last_power_state == "VEHICLE_POWER_STATE_DRIVE")) | moco_engine_stopped.is_set():
                 drive_cycle = False
                 # Populate queues with logged data allowing for post processing
                 q_t_axis.put(t)
@@ -453,11 +458,15 @@ def app_calculations():
 
                 # State of charge change
                 if 'lcl_soc' in locals():
-                    if (not 'start_soc' in locals()) & (lcl_soc != 0):
+                    if not 'start_soc' in locals():
                         start_soc = lcl_soc                        
-                    if 'last_soc' in locals(): 
+                    if ('last_soc' in locals()) and ('start_soc' in locals()):
                         delta_soc = last_soc - lcl_soc
-                        delta_soc_since_start = start_soc - delta_soc
+                        # Calculate the change of state of charge from start to end of log/simulation
+                        if start_soc > 0:
+                            delta_soc_since_start = start_soc - delta_soc
+                        else:
+                            delta_soc_since_start = 0
                     last_soc = lcl_soc    
 
                 # Calculate average speed over sample period
@@ -576,6 +585,8 @@ def main():
     with open('time.txt', 'w') as output_file:
         # data = output_file.read()
         output_file.write(str(time_axis))
+
+
 
 if __name__ == '__main__':
     main()
