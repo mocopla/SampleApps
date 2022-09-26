@@ -134,7 +134,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
         try:
             ssl_socket.connect((tcp_host, tcp_port))
         except ConnectionError as _e:
-            if _e.args[1] == 'Connection refused':
+            if _e.args[1] == 'Connection refused' or _e.args[1] == 'No connection could be made because the target machine actively refused it':
                 print('Waiting for server to (re-)start')
                 time.sleep(1)
             else:
@@ -581,11 +581,6 @@ def main():
     file_name_time = str(time.time())
     filename = "graph_"+file_name_time+".jpg"
     figure.savefig(filename, format='jpeg', dpi=100)
-    
-    with open('time.txt', 'w') as output_file:
-        # data = output_file.read()
-        output_file.write(str(time_axis))
-
 
 
 if __name__ == '__main__':
