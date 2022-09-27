@@ -66,13 +66,28 @@ Information about starting the application using docker and Python is provided i
 
 ## Usage <a name = "usage"></a>
 
+The latest version of the sample application can be found on Github. Please ensure to use the latest version.  
+
+**Configuration file (cfg.ini)**
+At startup, the sample application reads some configuration data from a configuration file (cfg.ini). This configuration file holds information about the connection to the simulator on the platform (host and port) as well as the path to the certificate file. In normal use the only value that should have to be adjusted is the port in the section \[tcp\]. The value must match the listening port that is shown on the simulator details on the Moco platform.  
+Please keep in mind the following regarding the location of the file cfg.ini:  
+1. When running the sample application inside a Docker container, please ensure the cfg.ini file is copied inside the /src folder when building the container.  
+2. When running the sample application from Python IDE or command line the file needs to be inside the working directory (i.e. the directory from which the python command is invoked)  
+
+**TLS certificate**  
+The connection between moco-engine and the sample application is encrypted with TLS. To allow the connection to be established a certificate file needs to be passed to the sample application. The certificate file moco-engine.pem can be downloaded from the release on Github.  
+Please keep in mind the following regarding the location of the certificate file:  
+1. When running the sample application inside a Docker container, please ensure the certificate file is copied inside the /src folder when building the container.  
+2. When running the sample application from Python IDE or command line the certificate file needs to be inside the working directory (i.e. the directory from which the python command is invoked)  
+
+
 **To create and run the sample application Docker container:**
 
 1. Create docker image for the sample application:
 
     All files required to create the docker image are contained in this repository
 
-    Copy the certificate for TLS (public-cert.pem) in the /src folder
+    Copy the certificate for TLS (moco-engine.pem) in the /src folder
 
     To create the docker image, from ~/sample_app_playground/ run: 
     ```
@@ -102,7 +117,7 @@ Information about starting the application using docker and Python is provided i
 
 * The application is written in Python. Implementation and testing was done using Python 3.8.10 and further testing was done using Python 3.10.2
 
-* To use the option of generting graphs of the logged data the library matplotlib needs to be installed using: pip install matplotlib 
+* To use the option of generting graphs of the logged data the library matplotlib needs to be installed using: ```pip install matplotlib```
 
 * Application can be started either from IDE or command line. If the Moco engine is not running the application will start and wait for the Moco engine to start and display the message: "Waiting for server to (re-)start"
 
@@ -128,8 +143,8 @@ Following basic test have been carried out on the application:
 ## Notes <a name = "notes"></a>
 
 * If the Moco engine is not running and the application is started, the application will wait for the Moco engine to start and display the message: "Waiting for server to (re-)start" with 1 second intervals.
-* If there is no vehicle data being transmitted from Moco engine to the application for more than 5 seconds a synchronization message will be send from the application to Moco engine. The reason for this message is to ensure the Moco engine is still running, so the application needs to keep running. While there is no data coming from the Moco engine, every 5 seconds the following message will appear in the console output of the sample app: "Sync message from Moco engine received", provided the Moco engine is still running
-
+* If there is no vehicle data being transmitted from Moco engine to the application for more than 5 seconds a synchronization message will be send from the application to Moco engine. The reason for this message is to ensure the Moco engine is still running, so the application needs to keep running. While there is no data coming from the Moco engine, every 5 seconds the following message will appear in the console output of the sample app: "Sync message from Moco engine received", provided the Moco engine is still running  
+* When the application is running and receiving data from the platform simulator, various data will be logged. When the simulator is stopped the sample application will generate some graphs with the available log data. When the window showing the graphs is closed the sample application will finish and write the graph to a jpeg file.
 
 
 ### Who do I talk to? ###

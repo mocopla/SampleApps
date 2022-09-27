@@ -36,10 +36,17 @@ import socket
 import ssl
 import json
 import sys
-
-
+from configparser import ConfigParser
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
+
+
+# Read configuration from config file
+config = ConfigParser()
+config.read('cfg.ini')
+CERTIFICATE_PATH = config['cert']['path']
+PLATFORM_HOST = config['tcp']['host']
+SIMULATOR_PORT = config['tcp']['port']
 
 
 # Check if command line arguments were passed to set host and port
@@ -48,21 +55,19 @@ import matplotlib.gridspec as gridspec
 if len(sys.argv) >= 2:
     TCP_HOST= sys.argv[1]
 else:    
-    TCP_HOST = 'demo-amp.mocopla.link'
-    # TCP_HOST = '0.0.0.0'
+    TCP_HOST = PLATFORM_HOST
 if len(sys.argv) >= 3:
     tcp_port_str = sys.argv[2]
     TCP_PORT = int(tcp_port_str)
 else:
-    TCP_PORT = 55002
-    # TCP_PORT = 3001
-    
+    TCP_PORT = int(SIMULATOR_PORT)
 
 
 context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
 context.verify_mode = ssl.CERT_OPTIONAL 
 context.check_hostname = False
-context.load_verify_locations(cafile='./moco-engine.pem')   
+context.load_verify_locations(cafile = CERTIFICATE_PATH)
+
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s: %(message)s',
@@ -76,7 +81,7 @@ logger = logging.getLogger(__name__)
 tcp_signal_update = threading.Event()
 moco_engine_stopped = threading.Event()
 
-# List of signals to request from SSDK to be used in the application
+# List of signals to request from Moco engine to be used in the application
 subscription_list = {"CMD": "vss","D":"Vehicle.Private.PowerState,Vehicle.Powertrain.TractionBattery.StateOfCharge.Displayed,Vehicle.Powertrain.Range,Vehicle.Private.UnixTime.Seconds,Vehicle.Speed,Vehicle.Powertrain.Transmission.TravelledDistance,Vehicle.Cabin.HVAC.IsAirConditioningActive"}
 
 
@@ -124,7 +129,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
     # Flag indicating data was received from Moco Engine
     data_received = False    
 
-    def ssdk_connect(tcp_host, tcp_port, message_data):
+    def moco_engine_connect(tcp_host, tcp_port, message_data):
         """ Funcion to connect to the TCP server in the Moco engine. The function
             can be used in case for first time connect and reconnect.
             Resulting connection will set the client port to non blocking.
@@ -149,19 +154,19 @@ def get_signals(tcp_host, tcp_port, signal_list):
     # Set up connection and send signal subscription to Moco engine
     # Moco engine will provide only the signals requested by the app
     # Required signals are provided in json_object
-    ssdk_connected = False
+    moco_engine_connected = False
     json_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     ssl_socket = context.wrap_socket(json_socket,server_hostname = tcp_host)
     json_object = signal_list
     data = json.dumps(json_object)
-    while not ssdk_connected:
-        if ssdk_connect(tcp_host, tcp_port, data):
-            ssdk_connected = True
+    while not moco_engine_connected:
+        if moco_engine_connect(tcp_host, tcp_port, data):
+            moco_engine_connected = True
     ssl_socket.setblocking(1)        
-    ssdk_response = ssl_socket.recv(4096)
+    moco_engine_response = ssl_socket.recv(4096)
     ssl_socket.setblocking(0)
     ssl_socket.settimeout(1)
-    available_signals = ssdk_response.decode("utf-8")
+    available_signals = moco_engine_response.decode("utf-8")
     json_parsed_response = json.loads(available_signals)
     if json_parsed_response["REP"]== "VSS_catalogue":
         print("Supported VSS signals:")                
@@ -181,7 +186,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
 
     # With connection established, receive signals and check connection
     t_start = time.time()
-    while ssdk_connected:
+    while moco_engine_connected:
         try:
             received = str(ssl_socket.recv(512), "utf-8")
         except socket.error as _e:
@@ -204,7 +209,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
                     if (_f.args[0] == 'Broken pipe' or _f.args[0] == 'Connection reset by peer'):
                         reconnect_counter = 0
                         while reconnect_counter <=4:
-                            if not ssdk_connect(tcp_host, tcp_port, data):
+                            if not moco_engine_connect(tcp_host, tcp_port, data):
                                 reconnect_counter += 1
                                 time.sleep(1)
                     else:
@@ -224,7 +229,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
                     json_object = signal_list
                     data = json.dumps(json_object)
                     while (reconnecting and (reconnect_counter<=10)):
-                        if not ssdk_connect(tcp_host,tcp_port, data):
+                        if not moco_engine_connect(tcp_host,tcp_port, data):
                             reconnect_counter += 1
                         else:
                             json_object = sync_message
@@ -232,7 +237,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
                             reconnecting = False
                     if reconnect_counter >= 5:
                         print("Re-connection to Moco engine failed")
-                        ssdk_connected = False
+                        moco_engine_connected = False
                         moco_engine_stopped.set()
                         tcp_signal_update.set()
                         break
@@ -250,7 +255,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
                 json_object = signal_list
                 data = json.dumps(json_object)
                 while (reconnecting and (reconnect_counter<=4)):
-                    if not ssdk_connect(tcp_host,tcp_port, data):
+                    if not moco_engine_connect(tcp_host,tcp_port, data):
                         reconnect_counter += 1
                     else:
                         json_object = sync_message
@@ -259,7 +264,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
                 if reconnect_counter == 5:
                     print("Re-connection to Moco engine failed")
                     # after engine stops and doesn't restart the app exits here
-                    ssdk_connected = False
+                    moco_engine_connected = False
                     moco_engine_stopped.set()
                     tcp_signal_update.set()
                     break
