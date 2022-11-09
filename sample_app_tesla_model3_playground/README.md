@@ -81,17 +81,22 @@ Please keep in mind the following regarding the location of the certificate file
 2. When running the sample application from Python IDE or command line the certificate file needs to be inside the working directory (i.e. the directory from which the python command is invoked)  
 
 
-**To create and run the sample application Docker container:**
+**To create and run the sample application Docker container:**  
+  
+  The repository contains two Dockerfiles that can be used, depending on the requirements for the Docker image size. When running the sample application on a PC, there migth not be a restriction on the image size. In this situation the file Dockerfile.python can be used. This Dockerfile will install Python 3.10.2 image and install the matplotlib package, that is used to create graphs of specific logged and calculated data. At the end of a simulation these graphs will get generated automatically.  
+  If the Docker image is intended for deployment on in vehicle hardware where image size should be kept to a minimum the file Dockerfile.alpine should be used. This Dockerfile will install the Python 3.10.8-alpine3.16 image which will result in a much smaller image. A limitation of using the alpine image is that by default no additional Python packages can be installed. It is possible to add the support for pip, but this will increase the image size. The data that can be used to create graphs that are mentioned before will be stored in a .csv (logged_signals.csv) file when the simulation finished (i.e. when no data is received from the Moco engine for more than 45 seconds, or when Moco engine is stopped)
 
 1. Create docker image for the sample application:
 
     All files required to create the docker image are contained in this repository
 
-    Copy the certificate for TLS (moco-engine.pem) in the /src folder
+    Copy the certificate for TLS (ssdk-ca-combined.pem.crt) in the /src folder
 
-    To create the docker image, from ~/sample_app_playground/ run: 
+    To create the docker image using the above mentioned Dockerfiles, from ~/sample_app_playground/ run the command for the respctive Dockerfile: 
     ```
-    docker build . -t sample-app
+    docker build . -f Dockerfile.alpine -t sample-app
+
+    docker build . -f Dockerfile.python -t sample-app
     ```
 
 
@@ -100,15 +105,15 @@ Please keep in mind the following regarding the location of the certificate file
     Once the docker image is created it can be started using the *docker run* command. 
 
     ```
-    docker run --name sample_app  -v <'path to local repository'>/sample_app_tesla_model3_playground/src/:/app -it sample-app  
+    docker run --rm --name sample_app --network=host   -v <'path to local repository'>/sample_app_tesla_model3_playground/src/:/app -it sample-app  
       
     or simplified from the repository run:  
       
-    docker run --name sample_app  -v=$(pwd)/src/:/app -it sample-app
+    docker run --rm --name sample_app --network=host -v=$(pwd)/src/:/app -it sample-app
     ```
     
-    Explanation of the docker run options:
-
+    Explanation of the docker run options:  
+    *--rm* : This operator will automatically remove the Docker container when it exits  
     *--name <'name'>* : This operator assigns the <'name'> to the docker to allow identification of the docker in e.g. docker process status (docker ps); Adding the name is optional and the name is free to choose.        
     *-v <"path to local_repository">/sample_app_tesla_model3_playground/src/:/app* : 
     Because the application generates a log file, a volume where the log file will be stored on the local computer needs to be mounted to the application. The command syntax is *-v <"local volume">:<"docker volume">* (where docker volume is /app as defined in the Dockerfile)
@@ -130,7 +135,7 @@ To run the sample app and pass in the host and port the full command will look a
 python sample_app.py 127.0.0.1 3001
 ```
 
-* If no host and port are passed as arguments default (hardcoded) host and port will be used by the application.
+* If no host and port are passed as arguments the host and port configured in cfg.ini will be used by the application.
 
 
 ## Testing <a name = "testing"></a>
