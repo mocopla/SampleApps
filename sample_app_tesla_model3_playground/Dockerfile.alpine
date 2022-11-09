@@ -1,0 +1,7 @@
+FROM python:3.10.8-alpine3.16
+
+WORKDIR /app
+
+COPY /src/sample_app_moco_playground.py /app/sample_app_moco_playground.py
+
+CMD ["python3", "sample_app_moco_playground.py"]

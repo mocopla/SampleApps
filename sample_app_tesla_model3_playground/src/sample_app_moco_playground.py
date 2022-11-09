@@ -35,10 +35,17 @@ import queue
 import socket
 import ssl
 import json
+import csv
 import sys
 from configparser import ConfigParser
-import matplotlib.pyplot as plt
-import matplotlib.gridspec as gridspec
+
+ALPINE_BUILD = False
+
+try:
+    import matplotlib.pyplot as plt
+    import matplotlib.gridspec as gridspec
+except ImportError:    
+    ALPINE_BUILD = True
 
 
 # Read configuration from config file
@@ -102,9 +109,6 @@ q_soc_axis = queue.Queue()
 q_hvac_state_axis = queue.Queue()
 q_range_axis = queue.Queue()
 q_traveled_distance_axis = queue.Queue()
-
-
-
 
 
 def get_signals(tcp_host, tcp_port, signal_list):
@@ -188,7 +192,7 @@ def get_signals(tcp_host, tcp_port, signal_list):
     t_start = time.time()
     while moco_engine_connected:
         try:
-            received = str(ssl_socket.recv(512), "utf-8")
+            received = str(ssl_socket.recv(2048), "utf-8")
         except socket.error as _e:
             if (_e.args[0] == errno.EWOULDBLOCK or _e.args[0] == "timed out" or _e.args[0] == "The read operation timed out"):
                 # No message received, send sync message to Moco engine
@@ -397,10 +401,8 @@ def app_calculations():
                 q_hvac_state_axis.put(hvac_state_array)
                 q_range_axis.put(range_array)
                 q_traveled_distance_axis.put(distance_traveled_array)
-
                 # Exit this thread
                 break
-
         if not q_soc.empty():
             lcl_soc = q_soc.get(-1)            
             signal_update = True
@@ -486,13 +488,16 @@ def app_calculations():
                     traveled_dist_calc_total = traveled_dist_calc
                 # Calculate distance traveled since start of simulation, based on odometer signal
                 if 'last_odo' in locals():
-                    traveled_dist_odo = lcl_odo - last_odo
-                else:                     
-                    last_odo = 0
-                
+                    if last_odo > 0:
+                        traveled_dist_odo = lcl_odo - last_odo
+                        last_odo = lcl_odo
+                    else:      
+                        traveled_dist_odo = 0               
+                        last_odo = lcl_odo
+                else:
+                    traveled_dist_odo = 0               
+                    last_odo = lcl_odo
                 traveled_dist_odo_total += traveled_dist_odo
-                
-                last_odo = lcl_odo
 
                 # Calculate difference in estimated range during this period
                 if 'prev_range' in locals():
@@ -501,6 +506,7 @@ def app_calculations():
                 else:
                     delta_range = 0
                     prev_range = lcl_range
+
                 # Compare to distance traveled
                 if delta_range > traveled_dist_odo:
                     message = (f"Simulator Time: {time_stamp} : Range drop higher than prediction. Current range: {round(lcl_range/1000,3)} km")
@@ -570,22 +576,33 @@ def main():
     distance_traveled_axis = q_traveled_distance_axis.get()
 
     # Create graph using the data received from the vehicle
-    figure, subplot = plt.subplots(2, 2)    
-    subplot[1 ,0].plot(time_axis, veh_spd_axis)
-    subplot[1, 0].set_title("Vehicle speed")
-    subplot[0, 0].plot(time_axis, soc_axis)
-    subplot[0, 0].set_title("State of charge")
-    subplot[0, 1].plot(time_axis, range_axis, 'b-', label="Range")
-    subplot[0, 1].set_title("Range vs Distance traveled")
-    subplot2 = subplot[0, 1].twinx()
-    subplot2.invert_yaxis()
-    subplot2.plot(time_axis, distance_traveled_axis, 'r-', label="Distance traveled")
-    subplot[1, 1].plot(time_axis, distance_traveled_axis)
-    subplot[1, 1].set_title("Distance traveled")
-    plt.show()
-    file_name_time = str(time.time())
-    filename = "graph_"+file_name_time+".jpg"
-    figure.savefig(filename, format='jpeg', dpi=100)
+    if not ALPINE_BUILD:
+        figure, subplot = plt.subplots(2, 2)    
+        subplot[1 ,0].plot(time_axis, veh_spd_axis)
+        subplot[1, 0].set_title("Vehicle speed")
+        subplot[0, 0].plot(time_axis, soc_axis)
+        subplot[0, 0].set_title("State of charge")
+        subplot[0, 1].plot(time_axis, range_axis, 'b-', label="Range")
+        subplot[0, 1].set_title("Range vs Distance traveled")
+        subplot2 = subplot[0, 1].twinx()
+        subplot2.invert_yaxis()
+        subplot2.plot(time_axis, distance_traveled_axis, 'r-', label="Distance traveled")
+        subplot[1, 1].plot(time_axis, distance_traveled_axis)
+        subplot[1, 1].set_title("Distance traveled")
+        plt.show()
+        file_name_time = str(time.time())
+        filename = "graph_"+file_name_time+".jpg"
+        figure.savefig(filename, format='jpeg', dpi=100)
+    
+    # Write logged signals to CSV file
+    with open('logged_signals.csv', 'w') as output_file:        
+        csv_writer = csv.writer(output_file)
+        csv_writer.writerow(time_axis)
+        csv_writer.writerow(veh_spd_axis)
+        csv_writer.writerow(soc_axis)
+        csv_writer.writerow(hvac_state_axis)
+        csv_writer.writerow(range_axis)
+        csv_writer.writerow(distance_traveled_axis)
 
 
 if __name__ == '__main__':
